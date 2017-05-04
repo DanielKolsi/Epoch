@@ -1,0 +1,366 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="UTF-8" />
+        <title>Epoch v. 0.03</title>
+              
+        <!--This is initially for testing Phaser features. Currently this is just a simple duel game for two players, but will 
+        evolve quickly for something quite different :)        -->
+            
+        <script src="https://cdn.jsdelivr.net/phaser/2.6.2/phaser.min.js"></script>
+        <style>
+         /* Always set the map height explicitly to define the size of the div
+          * element that contains the map. */
+         #map {
+           height: 100%;
+         }
+         /* Optional: Makes the sample page fill the window. */
+         html, body {
+           height: 100%;
+           margin: 0;
+           padding: 0;
+         }
+       </style>
+
+    </head>
+    <body>
+      <div id="game"></div>
+      <script type="text/javascript">
+      var game = new Phaser.Game(800, 600, Phaser.AUTO, 'epoch', { preload: preload, create: create, update: update, render: render });
+
+  function preload() {
+      game.load.tilemap('level3', 'assets/cybernoid.json', null, Phaser.Tilemap.TILED_JSON);
+      game.load.image('bullet', 'assets/bullet01.png');
+      game.load.image('bullet2', 'assets/bullet02.png');
+      game.load.image('tiles', 'assets/cybernoid.png', 16, 16);
+      
+      game.load.spritesheet('phaser','assets/dude.png', 32, 48);      
+      game.load.image('phaser2', 'assets/phaser-ship.png');      
+      game.load.spritesheet('explode', 'assets/explode.png', 128, 128);
+  }
+
+  var map;
+  var layer;
+  var cursors;
+  var player1, player2;
+  
+  var w_key, a_key, s_key, d_key;
+  var fireButton, fireButton2;
+  var bullets;
+  var bulletTime = 0;
+  var explosions;
+
+  var hitpoints1 = 3;
+  var hitpoints2 = 3;
+
+
+  function create() {
+      
+      w_key = game.input.keyboard.addKey(Phaser.Keyboard.W);
+      a_key = game.input.keyboard.addKey(Phaser.Keyboard.A);
+      s_key = game.input.keyboard.addKey(Phaser.Keyboard.S);
+      d_key = game.input.keyboard.addKey(Phaser.Keyboard.D);
+
+      //  A Tilemap object just holds the data needed to describe the map (i.e. the json exported from Tiled, or the CSV exported from elsewhere).
+      //  You can add your own data or manipulate the data (swap tiles around, etc) but in order to display it you need to create a TilemapLayer.
+      map = game.add.tilemap('level3');
+      map.addTilesetImage('CybernoidMap3BG_bank.png', 'tiles');
+
+      layer = map.createLayer(0);
+
+      //  Basically this sets EVERY SINGLE tile to fully collide on all faces
+      map.setCollisionByExclusion([7, 32, 35, 36, 47]);
+      layer.resizeWorld();
+      cursors = game.input.keyboard.createCursorKeys();
+            
+      player1 = game.add.sprite(300, 90, 'phaser');      
+      player2 = game.add.sprite(200, 190, 'phaser2');
+
+      player1.anchor.set(0.5);
+      player2.anchor.set(0.5);
+      game.physics.enable(player1);
+      game.physics.enable(player2);
+
+      //  Because both our body and our tiles are so tiny,
+      //  and the body is moving pretty fast, we need to add
+      //  some tile padding to the body. WHat this does
+      player1.body.tilePadding.set(32, 32);
+
+        //  Our bullet group
+      bullets = game.add.group();
+      bullets.enableBody = true;
+      bullets.physicsBodyType = Phaser.Physics.ARCADE;
+      bullets.createMultiple(300, 'bullet');
+      bullets.setAll('anchor.x', 0.5);
+      bullets.setAll('anchor.y', 1);
+      bullets.setAll('outOfBoundsKill', false);
+      bullets.setAll('checkWorldBounds', false);
+
+      bullets2 = game.add.group();
+      bullets2.enableBody = true;
+      bullets2.physicsBodyType = Phaser.Physics.ARCADE;
+      bullets2.createMultiple(300, 'bullet');
+      bullets2.setAll('anchor.x', 0.5);
+      bullets2.setAll('anchor.y', 1);
+      bullets2.setAll('outOfBoundsKill', false);
+      bullets2.setAll('checkWorldBounds', false);
+
+      fireButton = game.input.keyboard.addKey(Phaser.Keyboard.SPACEBAR);
+      fireButton2 = game.input.keyboard.addKey(Phaser.Keyboard.SHIFT);
+
+      //  An explosion pool
+      explosions = game.add.group();
+      explosions.createMultiple(4, 'explode');
+      explosions.forEach(setupShip, this);
+
+      //  Text
+      stateText = game.add.text(game.world.centerX, game.world.centerY,' ', { font: '24px Arial', fill: '#fff' });
+      //stateText.anchor.setTo(3.0, 0.1);
+      stateText.visible = false;
+      player1.animations.add('left', [0, 1, 2, 3], 10, true);
+      player1.animations.add('right', [5, 6, 7, 8], 10, true);    
+  }
+
+  function update() {
+
+      game.physics.arcade.collide(player1, layer);
+      game.physics.arcade.collide(player2, layer);
+      game.physics.arcade.collide(player1, player2);
+      
+      game.physics.arcade.collide(bullets, layer);
+      game.physics.arcade.collide(bullets2, layer);
+      game.physics.arcade.overlap(player2, bullets, collisionHandler, null, this);
+      game.physics.arcade.overlap(player1, bullets2, collisionHandler2, null, this);
+
+      player1.body.velocity.x = 0;
+      player1.body.velocity.y = 0;
+      player2.body.velocity.x = 0;
+      player2.body.velocity.y = 0;
+
+      var diff = player2.x - player1.x;
+      var diff_abs = Math.abs(player2.x - player1.x);
+
+
+      if (diff < 300) {
+        if (player2.x > player1.x) {
+            game.camera.follow(player2);
+        } else {
+            game.camera.follow(player1);
+        }
+      } else {
+        game.camera.unfollow();
+      }
+
+      if (w_key.isDown)
+      {
+        player2.body.velocity.y = -200;
+      }
+      else if (a_key.isDown)
+      {
+        if ( ( (player2.x < player1.x) && diff_abs < 370) || (player2.x > player1.x) ) {
+            player2.body.velocity.x = -200;
+            player2.scale.x = -1;
+        }
+      }
+      else if (s_key.isDown)
+      {
+        player2.body.velocity.y = 200;
+      }
+      else if (d_key.isDown)
+      {
+        if ( ( (player2.x > player1.x) && diff_abs < 370) || (player2.x < player1.x) ) {
+            player2.body.velocity.x = 200;
+            player2.scale.x = 1;
+        }
+      }
+
+      if (cursors.up.isDown)
+      {
+          player1.body.velocity.y = -200;          
+      }
+      else if (cursors.down.isDown)
+      {
+          player1.body.velocity.y = 200;          
+      }
+
+      if (cursors.left.isDown)
+      {
+        player1.animations.play('right');          
+        if ( ( (player1.x < player2.x) && diff_abs < 370) || (player1.x > player2.x) ) {
+          player1.body.velocity.x = -200;
+          player1.scale.x = -1;
+          
+        }
+      }
+      else if (cursors.right.isDown)
+      {
+        if ( ( (player1.x > player2.x) && diff_abs < 370) || (player1.x < player2.x) ) {
+          player1.body.velocity.x = 200;
+          player1.scale.x = 1;              
+        }
+        player1.animations.play('right');                  
+      } else
+	    {
+	        //  Stand still
+	        player1.animations.stop();				
+	        player1.frame = 4;
+	    }
+
+      if (fireButton.isDown)
+      {
+          fireBullet();
+      }
+      if (fireButton2.isDown)
+      {
+          fireBullet2();
+      }
+  }
+
+  function render() {
+      // game.debug.body(sprite);
+  }
+
+  function fireBullet () {
+
+      //  To avoid them being allowed to fire too fast we set a time limit
+      if (game.time.now > bulletTime)
+      {
+          //  Grab the first bullet we can from the pool
+          bullet = bullets.getFirstExists(false);
+          if (bullet)
+          {
+
+              bullet.reset(player1.x, player1.y + 8);
+
+              bulletTime = game.time.now + 200;
+              if (cursors.up.isDown)
+              {
+                  player1.body.velocity.y = -200;
+                  bullet.body.velocity.y = -400;                  
+              }
+              else if (cursors.down.isDown)
+              {
+                  player1.body.velocity.y = 200;
+                  bullet.body.velocity.y = 400;            
+              }
+
+              if (cursors.left.isDown)
+              {
+                  player1.body.velocity.x = -200;
+                  bullet.body.velocity.x = -400;
+                  player1.scale.x = -1;                  
+              }
+              else if (cursors.right.isDown)
+              {
+                  player1.body.velocity.x = 200;
+                  bullet.body.velocity.x = 400;
+                  player1.scale.x = 1;                
+              }
+          }
+      }
+    }
+      function fireBullet2 () {
+
+          //  To avoid them being allowed to fire too fast we set a time limit
+          if (game.time.now > bulletTime)
+          {
+              //  Grab the first bullet we can from the pool
+              bullet2 = bullets2.getFirstExists(false);
+
+              if (bullet2)
+              {
+                  bullet2.reset(player2.x, player2.y + 8);
+                  bulletTime = game.time.now + 200;
+                  
+                  if (w_key.isDown)
+                  {
+                      player2.body.velocity.y = -200;
+                      bullet2.body.velocity.y = -400;
+                  }
+                  else if (s_key.isDown)
+                  {
+                      player2.body.velocity.y = 200;
+                      bullet2.body.velocity.y = 400;                      
+                  }
+
+                  if (a_key.isDown)
+                  {
+                      player2.body.velocity.x = -200;
+                      bullet2.body.velocity.x = -400;
+                      player2.scale.x = -1;                      
+                  }
+                  else if (d_key.isDown)
+                  {
+                      player2.body.velocity.x = 200;
+                      bullet2.body.velocity.x = 400;
+                      player2.scale.x = 1;                    
+                  }
+              }
+          }
+  }
+
+  function resetBullet (bullet) {
+
+      //  Called if the bullet goes out of the screen
+      bullet.kill();
+  }
+  function collisionHandler (player2, bullet) {
+    //  When a bullet hits an alien we kill them both
+      bullet.kill(); 
+
+     var explosion = explosions.getFirstExists(false);
+     explosion.reset(player2.body.x, player2.body.y);
+     explosion.play('explode', 30, false, true);
+
+      if (hitpoints2 == 0) {
+       player2.kill();
+       stateText.text=" GAME OVER \n Player 1 wins  \n Click to restart";
+       stateText.x = Math.floor(player1.x + player1.width / 2);
+       stateText.y = Math.floor(player1.y + player1.height / 2);
+       stateText.visible = true;
+       game.input.onTap.addOnce(restart, this);
+    } else hitpoints2--;
+  }
+
+  function collisionHandler2 (player1, bullet2) {
+
+    console.log('collision2');
+
+    bullet2.kill();
+    var explosion = explosions.getFirstExists(false);
+    explosion.reset(player1.body.x, player1.body.y);
+    explosion.play('explode', 30, false, true);
+
+    if (hitpoints1 == 0) {
+      
+      player1.kill();
+      stateText.text=" GAME OVER \n Player 2 wins \n Click to restart";
+      stateText.visible = true;
+      stateText.x = Math.floor(player2.x + player2.width / 2);
+      stateText.y = Math.floor(player2.y + player2.height / 2);
+      game.input.onTap.addOnce(restart, this);
+    } else hitpoints1--;
+  }
+
+  function setupShip (ship) {
+
+    ship.anchor.x = 0.5;
+    ship.anchor.y = 0.5;
+    ship.animations.add('explode');
+}
+
+  function restart () {
+      hitpoints1 = 3;
+      hitpoints2 = 3;
+      player1.anchor.set(0.5);
+      player2.anchor.set(0.5);
+      player1.revive();
+      player2.revive();      
+      stateText.visible = false;
+  }
+
+</script>
+<!--script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBjmdHr9PZaOoSyLNHd4gJMb1aF2VSJbqU&callback=initMap"
+    async defer></script-->
+</body>
+</html>
