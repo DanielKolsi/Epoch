@@ -7,7 +7,8 @@ words of different languages and using them to solve simple problems. Problems m
 or logical tests.
 
 -----
-
+Material & docs:
+https://leanpub.com/html5shootemupinanafternoon/read
 Currently this just tests some Phaser features within a simple duel game.
 
 The final game will be like a "time machine" of computer games, starting from 1970 and 
